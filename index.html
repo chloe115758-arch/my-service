@@ -43,22 +43,38 @@
   }
   .facts b { color: var(--text); font-weight: 600; }
 
+  /* 대기 상태 칩 (판단보다 작게) */
+  .chip {
+    display: inline-block; margin: 0 0 4px; padding: 4px 12px;
+    border: 1px solid var(--line); border-radius: 12px;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .chip b { font-weight: 700; }
+  .chip.good b { color: var(--good); }
+  .chip.normal b { color: var(--normal); }
+  .chip.bad b, .chip.worst b { color: var(--rest); }
+  .chip.worst b { color: #8b1a1a; }
+  .chip:empty { display: none; }
   .note { margin: 8px 0 0; min-height: 0; font-size: 0.75rem; color: var(--muted); }
   .note:empty { display: none; }
 
   /* 시간별 리스트 (판단 아래에 조용하게) */
   .best { margin: 8px 0; font-size: 0.85rem; font-weight: 600; color: var(--good); min-height: 1em; }
   .hours { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; color: var(--muted); }
-  .hours li, .skeleton .row {
-    display: grid; grid-template-columns: 3.2rem 4.2rem 1fr 3rem;
+  .hours li, .skeleton .row, .hours-head {
+    display: grid; grid-template-columns: 3.2rem 4.2rem 1fr 3.6rem 3rem;
     gap: 8px; align-items: baseline;
     padding: 7px 0; border-bottom: 1px solid var(--line);
   }
+  .hours-head { padding: 4px 0; font-size: 0.7rem; color: var(--muted); }
+  .hours-head span:nth-child(4), .hours-head span:nth-child(5) { text-align: right; }
   .hours .time { color: var(--text); }
   .hours .lv.good { color: var(--good); }
   .hours .lv.normal { color: var(--normal); }
   .hours .lv.rest { color: var(--rest); }
   .hours .num { text-align: right; }
+  .hours .air { font-size: 0.72rem; color: var(--muted); }
+  .hours .air.bad, .hours .air.worst { color: var(--rest); }
   .hours li.is-best { background: #f5faf7; font-weight: 600; }
   .skeleton { margin-top: 8px; }
   .skeleton .row { height: 34px; }
@@ -110,6 +126,7 @@
   <section id="loading" class="card" role="status">
     <p class="status">날씨를 불러오는 중이에요</p>
     <div class="spinner" aria-hidden="true"></div>
+    <p class="chip">대기 정보 확인 중…</p>
   </section>
 
   <!-- 불러오기 실패: 원인별 문구는 showError()가 넣는다 -->
@@ -127,6 +144,7 @@
   <!-- 결과: 판단 → 근거 → 출처 -->
   <section id="result" class="card">
     <h1 id="verdict" class="verdict"></h1>
+    <p id="air" class="chip"></p>
     <ul class="facts">
       <li>지역 <b id="place"></b></li>
       <li>기온 <b id="temp"></b></li>
@@ -146,6 +164,9 @@
   <!-- 시간별 리스트: 결과일 때만 보임 (show()가 켜고 끈다) -->
   <section id="list" class="card">
     <p id="best" class="best"></p>
+    <div class="hours-head" aria-hidden="true">
+      <span>시각</span><span>판단</span><span>대기</span><span>기온</span><span>강수확률</span>
+    </div>
     <ul id="hours" class="hours" aria-label="앞으로 12시간 예보"></ul>
   </section>
 
@@ -155,11 +176,27 @@
   </section>
 
   <!-- 출처: 로딩·성공·실패 모든 화면에서 항상 보인다 -->
-  <p class="source">출처: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></p>
+  <p class="source">출처: 날씨 <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+    · 공기질 <a href="https://open-meteo.com/en/docs/air-quality-api" target="_blank" rel="noopener">Open-Meteo 공기질 API</a> (Copernicus CAMS 모델 예측값이며 측정값이 아니에요)</p>
 </main>
 
 <script>
+  // ── 대기(미세먼지) 등급 기준 — 환경부/에어코리아 기준, ㎍/㎥ ─────────────────────
+  //            좋음   보통    나쁨    매우 나쁨
+  //  PM10      ~30    ~80    ~150    151~     (미세먼지)
+  //  PM2.5     ~15    ~35    ~75     76~      (초미세먼지)
+  //  · 에어코리아의 공식 등급은 하루 평균 예측 기준이고, 여기서는 현재 시간값에 같은 경계를 적용한다
+  //  · 두 항목 중 더 나쁜 등급으로 정한다. "나쁨" 이상이면 한 줄 판단과 시간별 줄을 한 단계 낮춘다
+  const AIR_LIMITS = { pm10: [30, 80, 150], pm2_5: [15, 35, 75] };
+  const AIR_GRADES = [
+    { text: "대기 좋음", cls: "good" },
+    { text: "대기 보통", cls: "normal" },
+    { text: "대기 나쁨", cls: "bad" },
+    { text: "대기 매우 나쁨", cls: "worst" },
+  ];
+
   // 인증키 불필요 (Open-Meteo)
+  const AIR_URL = "https://air-quality-api.open-meteo.com/v1/air-quality";
   const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
   const WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
   // "서울"처럼 짧은 한국어 이름은 지오코딩이 못 찾거나 엉뚱한 마을을 줘서, 행정구역 접미사도 같이 찾는다
@@ -172,6 +209,43 @@
     if (p >= 1 || code >= 61 || w >= 40 || t <= -5 || t >= 33) return { text: "쉬는 게 좋아요", cls: "rest" };
     if (p > 0 || code >= 45 || w >= 25 || t < 3 || t > 28) return { text: "보통이에요", cls: "normal" };
     return { text: "걷기 좋아요", cls: "good" };
+  }
+
+  // 값 → 등급 번호(0 좋음 ~ 3 매우 나쁨). 소수는 반올림해서 경계와 비교한다
+  function airGrade(value, limits) {
+    const v = Math.round(value);
+    const i = limits.findIndex(max => v <= max);
+    return i === -1 ? limits.length : i;
+  }
+
+  // 미세먼지·초미세먼지 중 더 나쁜 등급. 값이 없으면 null
+  function airLevelOf(pm10, pm25) {
+    if (pm10 == null || pm25 == null) return null;
+    return Math.max(airGrade(pm10, AIR_LIMITS.pm10), airGrade(pm25, AIR_LIMITS.pm2_5));
+  }
+
+  // 대기가 나쁨 이상이면 판단을 한 단계 낮춘다 (걷기 좋아요 → 보통이에요 → 쉬는 게 좋아요)
+  function lowerJudge(j) {
+    if (j.cls === "good") return { text: "보통이에요", cls: "normal" };
+    if (j.cls === "normal") return { text: "쉬는 게 좋아요", cls: "rest" };
+    return j;
+  }
+
+  function renderAir(air) {
+    const el = document.getElementById("air");
+    if (!air) {
+      el.className = "chip";
+      el.textContent = "대기 정보를 불러오지 못했어요";
+      return 0;
+    }
+    const level = airLevelOf(air.pm10, air.pm2_5);
+    el.className = "chip " + AIR_GRADES[level].cls;
+    el.textContent = "";
+    const b = document.createElement("b");
+    b.textContent = AIR_GRADES[level].text;
+    el.append(b, " · 미세먼지 " + Math.round(air.pm10) + " · 초미세먼지 " + Math.round(air.pm2_5) + "㎍/㎥"
+      + (level >= 2 ? " · 마스크를 챙기세요" : ""));
+    return level;
   }
 
   // 시간별 예보에는 기온·강수확률만 있다 (바람·날씨코드 없음)
@@ -187,16 +261,25 @@
   }
 
   // 현재 시각이 속한 시간부터 12개. 시각은 요청한 timezone의 현지 시간 문자열이라 문자열 비교로 충분하다
-  function renderHours(hourly, nowTime) {
+  function renderHours(hourly, nowTime, air) {
     const start = hourly.time.findIndex(t => t >= nowTime.slice(0, 13) + ":00");
     const rows = [];
     for (let i = Math.max(start, 0); i < hourly.time.length && rows.length < 12; i++) {
       const t = hourly.temperature_2m[i], p = hourly.precipitation_probability[i];
-      rows.push({ time: hourly.time[i], t, p, lv: hourLevel(t, p) });
+      // 그 시각의 대기가 나쁨 이상이면 한 단계 낮춘다. 대기 등급은 모든 줄에 작게 표시한다
+      const k = air ? air.hourly.time.indexOf(hourly.time[i]) : -1;
+      const al = k < 0 ? null : airLevelOf(air.hourly.pm10[k], air.hourly.pm2_5[k]);
+      const lv = Math.min(2, hourLevel(t, p) + (al >= 2 ? 1 : 0));
+      rows.push({ time: hourly.time[i], t, p, lv, al });
     }
-    // 가장 걷기 좋은 시간: 등급 → 강수확률 → 18°C에 가까운 기온 → 빠른 시각 순
-    const best = rows.reduce((a, b) =>
-      b.lv < a.lv || (b.lv === a.lv && (b.p < a.p || (b.p === a.p && Math.abs(b.t - 18) < Math.abs(a.t - 18)))) ? b : a);
+    // 가장 걷기 좋은 시간: 등급 → 대기 → 강수확률 → 18°C에 가까운 기온 → 빠른 시각 순
+    const better = (b, a) => {
+      if (b.lv !== a.lv) return b.lv < a.lv;
+      if ((b.al || 0) !== (a.al || 0)) return (b.al || 0) < (a.al || 0);
+      if (b.p !== a.p) return b.p < a.p;
+      return Math.abs(b.t - 18) < Math.abs(a.t - 18);
+    };
+    const best = rows.reduce((a, b) => (better(b, a) ? b : a));
     const hasBest = rows.length > 0 && best.lv < 2;
 
     const ul = document.getElementById("hours");
@@ -207,6 +290,8 @@
       const cells = [
         ["time", i === 0 ? "지금" : Number(r.time.slice(11, 13)) + "시"],
         ["lv " + LEVELS[r.lv].cls, LEVELS[r.lv].text],
+        // 열 제목이 "대기"라서 "대기 "는 뗀다. 공기질을 못 불러온 시각은 빈칸
+        ["air " + (r.al == null ? "" : AIR_GRADES[r.al].cls), r.al == null ? "" : AIR_GRADES[r.al].text.replace("대기 ", "")],
         ["num", r.t + "°C"],
         ["num", r.p + "%"],
       ];
@@ -230,10 +315,11 @@
     ids.forEach(id => document.getElementById(id).classList.add("active"));
   }
 
-  function render(data, place) {
+  function render(data, place, air) {
     const c = data.current, u = data.current_units;
-    const j = judge(c);
-    renderHours(data.hourly, c.time);
+    const level = renderAir(air);
+    const j = level >= 2 ? lowerJudge(judge(c)) : judge(c);
+    renderHours(data.hourly, c.time, air);
     document.getElementById("place").textContent = place;
     document.getElementById("note").textContent = current.note || "";
     const v = document.getElementById("verdict");
@@ -363,9 +449,22 @@
     const url = WEATHER_URL + "?latitude=" + current.latitude + "&longitude=" + current.longitude
       + "&current=temperature_2m,precipitation,wind_speed_10m,weather_code"
       + "&hourly=temperature_2m,precipitation_probability&timezone=auto";
+    // 공기질은 따로 실패해도 날씨는 보여준다 (실패하면 null)
+    const airPromise = fetchAir().catch(e => { console.error(e); return null; });
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
-    render(await res.json(), current.name);
+    render(await res.json(), current.name, await airPromise);
+  }
+
+  async function fetchAir() {
+    const url = AIR_URL + "?latitude=" + current.latitude + "&longitude=" + current.longitude
+      + "&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=auto";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const c = data.current;
+    if (c.pm10 == null || c.pm2_5 == null) throw new Error("공기질 값이 비어 있어요");
+    return { pm10: c.pm10, pm2_5: c.pm2_5, hourly: data.hourly };
   }
 
   // 도시 검색(name이 있으면)과 날씨 호출을 한 번에. 다시 시도는 같은 동작을 반복한다
