@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오늘 걷기 좋은가</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #111111;
+    --muted: #6b6b6b;
+    --line: #e6e6e6;
+    --good: #1a7f4b;
+    --normal: #b7791f;
+    --rest: #c53030;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  main { width: 100%; max-width: 420px; }
+  .card { display: none; }
+  .card.active { display: block; }
+
+  /* 1. 한 줄 판단 */
+  .verdict { font-size: 2.2rem; font-weight: 800; margin: 24px 0 8px; line-height: 1.25; }
+  .verdict.good { color: var(--good); }
+  .verdict.normal { color: var(--normal); }
+  .verdict.rest { color: var(--rest); }
+
+  /* 2. 근거 숫자 (작게) */
+  .facts {
+    list-style: none; padding: 0; margin: 16px 0 0;
+    display: flex; flex-wrap: wrap; gap: 8px 16px;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .facts b { color: var(--text); font-weight: 600; }
+
+  /* 3. 출처 자리 */
+  .source {
+    margin-top: 32px; padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 0.75rem; color: var(--muted);
+  }
+
+  .message { font-size: 1.1rem; margin: 24px 0 16px; }
+  .spinner {
+    width: 28px; height: 28px; margin-top: 24px;
+    border: 3px solid var(--line); border-top-color: var(--text);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  button {
+    background: #000; color: #fff; border: 0;
+    border-radius: 12px; padding: 12px 20px;
+    font-size: 0.95rem; cursor: pointer;
+  }
+
+  /* 화면 구조 확인용 (API 연결 전까지만 사용) */
+  .dev { margin-top: 40px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .dev button { padding: 8px 12px; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<main>
+  <!-- 로딩 중 -->
+  <section id="loading" class="card">
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="message">날씨 확인하는 중…</p>
+  </section>
+
+  <!-- 불러오기 실패 -->
+  <section id="error" class="card">
+    <p class="message">정보를 불러오지 못했어요.</p>
+    <button id="retry" type="button">다시 시도</button>
+  </section>
+
+  <!-- 결과: 판단 → 근거 → 출처 -->
+  <section id="result" class="card">
+    <h1 id="verdict" class="verdict"></h1>
+    <ul class="facts">
+      <li>기온 <b id="temp"></b></li>
+      <li>비 <b id="rain"></b></li>
+      <li>미세먼지 <b id="dust"></b></li>
+    </ul>
+    <p class="source" id="source">출처: (API 연결 후 표시)</p>
+  </section>
+
+  <div class="dev">
+    <button type="button" data-state="loading">로딩</button>
+    <button type="button" data-state="result">결과</button>
+    <button type="button" data-state="error">실패</button>
+  </div>
+</main>
+
+<script>
+  // 더미 데이터 (API 연결 전)
+  const dummy = { temp: 18, rain: 10, dust: "좋음", source: "더미 데이터" };
+
+  function judge(d) {
+    if (d.rain >= 60 || d.dust === "매우나쁨") return { text: "쉬는 게 좋아요", cls: "rest" };
+    if (d.rain >= 30 || d.dust === "나쁨" || d.temp < 0 || d.temp > 30) return { text: "보통이에요", cls: "normal" };
+    return { text: "걷기 좋아요", cls: "good" };
+  }
+
+  function show(state) {
+    document.querySelectorAll(".card").forEach(el => el.classList.remove("active"));
+    document.getElementById(state).classList.add("active");
+  }
+
+  function render(d) {
+    const j = judge(d);
+    const v = document.getElementById("verdict");
+    v.textContent = j.text;
+    v.className = "verdict " + j.cls;
+    document.getElementById("temp").textContent = d.temp + "°C";
+    document.getElementById("rain").textContent = d.rain + "%";
+    document.getElementById("dust").textContent = d.dust;
+    document.getElementById("source").textContent = "출처: " + d.source;
+    show("result");
+  }
+
+  function load() {
+    show("loading");
+    setTimeout(() => render(dummy), 800); // TODO: 여기에 API 호출
+  }
+
+  document.getElementById("retry").addEventListener("click", load);
+  document.querySelectorAll(".dev button").forEach(b =>
+    b.addEventListener("click", () => b.dataset.state === "result" ? render(dummy) : show(b.dataset.state))
+  );
+
+  load();
+</script>
+</body>
+</html>
