@@ -43,6 +43,24 @@
   }
   .facts b { color: var(--text); font-weight: 600; }
 
+  /* 시간별 리스트 (판단 아래에 조용하게) */
+  .best { margin: 8px 0; font-size: 0.85rem; font-weight: 600; color: var(--good); min-height: 1em; }
+  .hours { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; color: var(--muted); }
+  .hours li, .skeleton .row {
+    display: grid; grid-template-columns: 3.2rem 4.2rem 1fr 3rem;
+    gap: 8px; align-items: baseline;
+    padding: 7px 0; border-bottom: 1px solid var(--line);
+  }
+  .hours .time { color: var(--text); }
+  .hours .lv.good { color: var(--good); }
+  .hours .lv.normal { color: var(--normal); }
+  .hours .lv.rest { color: var(--rest); }
+  .hours .num { text-align: right; }
+  .hours li.is-best { background: #f5faf7; font-weight: 600; }
+  .skeleton { margin-top: 8px; }
+  .skeleton .row { height: 34px; }
+  .skeleton .row::before { content: ""; grid-column: 1 / -1; height: 10px; border-radius: 6px; background: var(--line); align-self: center; }
+
   /* 3. 출처 자리 */
   .source {
     margin-top: 32px; padding-top: 12px;
@@ -110,6 +128,17 @@
   </form>
   <p id="hint" class="hint" role="status"></p>
 
+  <!-- 시간별 리스트: 결과일 때만 보임 (show()가 켜고 끈다) -->
+  <section id="list" class="card">
+    <p id="best" class="best"></p>
+    <ul id="hours" class="hours" aria-label="앞으로 12시간 예보"></ul>
+  </section>
+
+  <!-- 리스트 자리 표시: 로딩 중에만 보임 -->
+  <section id="skeleton" class="card skeleton" aria-hidden="true">
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+  </section>
+
   <!-- 출처: 로딩·성공·실패 모든 화면에서 항상 보인다 -->
   <p class="source">출처: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></p>
 </main>
@@ -130,13 +159,66 @@
     return { text: "걷기 좋아요", cls: "good" };
   }
 
-  function show(state) {
-    document.querySelectorAll(".card").forEach(el => el.classList.remove("active"));
-    document.getElementById(state).classList.add("active");
+  // 시간별 예보에는 기온·강수확률만 있다 (바람·날씨코드 없음)
+  const LEVELS = [
+    { cls: "good", text: "걷기 좋음" },
+    { cls: "normal", text: "보통" },
+    { cls: "rest", text: "쉼" },
+  ];
+  function hourLevel(t, prob) {
+    if (prob >= 60 || t <= -5 || t >= 33) return 2;
+    if (prob >= 30 || t < 3 || t > 28) return 1;
+    return 0;
   }
 
-  function render(c, u, place) {
+  // 현재 시각이 속한 시간부터 12개. 시각은 요청한 timezone의 현지 시간 문자열이라 문자열 비교로 충분하다
+  function renderHours(hourly, nowTime) {
+    const start = hourly.time.findIndex(t => t >= nowTime.slice(0, 13) + ":00");
+    const rows = [];
+    for (let i = Math.max(start, 0); i < hourly.time.length && rows.length < 12; i++) {
+      const t = hourly.temperature_2m[i], p = hourly.precipitation_probability[i];
+      rows.push({ time: hourly.time[i], t, p, lv: hourLevel(t, p) });
+    }
+    // 가장 걷기 좋은 시간: 등급 → 강수확률 → 18°C에 가까운 기온 → 빠른 시각 순
+    const best = rows.reduce((a, b) =>
+      b.lv < a.lv || (b.lv === a.lv && (b.p < a.p || (b.p === a.p && Math.abs(b.t - 18) < Math.abs(a.t - 18)))) ? b : a);
+    const hasBest = rows.length > 0 && best.lv < 2;
+
+    const ul = document.getElementById("hours");
+    ul.textContent = "";
+    rows.forEach((r, i) => {
+      const li = document.createElement("li");
+      if (hasBest && r === best) li.className = "is-best";
+      const cells = [
+        ["time", i === 0 ? "지금" : Number(r.time.slice(11, 13)) + "시"],
+        ["lv " + LEVELS[r.lv].cls, LEVELS[r.lv].text],
+        ["num", r.t + "°C"],
+        ["num", r.p + "%"],
+      ];
+      cells.forEach(([cls, text]) => {
+        const s = document.createElement("span");
+        s.className = cls;
+        s.textContent = text;
+        li.appendChild(s);
+      });
+      ul.appendChild(li);
+    });
+    const label = rows.indexOf(best) === 0 ? "지금" : Number(best.time.slice(11, 13)) + "시";
+    document.getElementById("best").textContent = hasBest ? label + "이 제일 좋아요" : "";
+  }
+
+  function show(state) {
+    document.querySelectorAll(".card").forEach(el => el.classList.remove("active"));
+    const ids = [state];
+    if (state === "result") ids.push("list");
+    if (state === "loading") ids.push("skeleton");
+    ids.forEach(id => document.getElementById(id).classList.add("active"));
+  }
+
+  function render(data, place) {
+    const c = data.current, u = data.current_units;
     const j = judge(c);
+    renderHours(data.hourly, c.time);
     document.getElementById("place").textContent = place;
     const v = document.getElementById("verdict");
     v.textContent = j.text;
@@ -175,11 +257,11 @@
 
   async function fetchWeather() {
     const url = WEATHER_URL + "?latitude=" + current.latitude + "&longitude=" + current.longitude
-      + "&current=temperature_2m,precipitation,wind_speed_10m,weather_code&timezone=auto";
+      + "&current=temperature_2m,precipitation,wind_speed_10m,weather_code"
+      + "&hourly=temperature_2m,precipitation_probability&timezone=auto";
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    render(data.current, data.current_units, current.name);
+    render(await res.json(), current.name);
   }
 
   // 도시 검색(name이 있으면)과 날씨 호출을 한 번에. 다시 시도는 같은 동작을 반복한다
