@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오늘 걷기 좋은가</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #111111;
+    --muted: #6b6b6b;
+    --line: #e6e6e6;
+    --good: #1a7f4b;
+    --normal: #b7791f;
+    --rest: #c53030;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  main { width: 100%; max-width: 420px; }
+  .card { display: none; }
+  .card.active { display: block; }
+
+  /* 1. 한 줄 판단 */
+  .verdict { font-size: 2.2rem; font-weight: 800; margin: 24px 0 8px; line-height: 1.25; }
+  .verdict.good { color: var(--good); }
+  .verdict.normal { color: var(--normal); }
+  .verdict.rest { color: var(--rest); }
+
+  /* 2. 근거 숫자 (작게) */
+  .facts {
+    list-style: none; padding: 0; margin: 16px 0 0;
+    display: flex; flex-wrap: wrap; gap: 8px 16px;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .facts b { color: var(--text); font-weight: 600; }
+
+  /* 3. 출처 자리 */
+  .source {
+    margin-top: 32px; padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 0.75rem; color: var(--muted);
+  }
+
+  .message { font-size: 1.1rem; margin: 24px 0 16px; }
+  .spinner {
+    width: 28px; height: 28px; margin-top: 24px;
+    border: 3px solid var(--line); border-top-color: var(--text);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  button {
+    background: #000; color: #fff; border: 0;
+    border-radius: 12px; padding: 12px 20px;
+    font-size: 0.95rem; cursor: pointer;
+  }
+
+  /* 도시 입력 (판단보다 눈에 덜 띄게 작게) */
+  .search { margin-top: 32px; display: flex; gap: 8px; }
+  .search input {
+    flex: 1; min-width: 0; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: 12px;
+    font-size: 0.85rem; color: var(--text); background: var(--bg);
+  }
+  .search button { padding: 8px 16px; font-size: 0.85rem; }
+  .hint { margin: 8px 0 0; min-height: 1em; font-size: 0.75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <!-- 로딩 중 -->
+  <section id="loading" class="card">
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="message">날씨 확인하는 중…</p>
+  </section>
+
+  <!-- 불러오기 실패 -->
+  <section id="error" class="card">
+    <p class="message">정보를 불러오지 못했어요.</p>
+    <button id="retry" type="button">다시 시도</button>
+  </section>
+
+  <!-- 결과: 판단 → 근거 → 출처 -->
+  <section id="result" class="card">
+    <h1 id="verdict" class="verdict"></h1>
+    <ul class="facts">
+      <li>지역 <b id="place"></b></li>
+      <li>기온 <b id="temp"></b></li>
+      <li>강수 <b id="rain"></b></li>
+      <li>바람 <b id="wind"></b></li>
+    </ul>
+    <p class="source">출처: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></p>
+  </section>
+
+  <form id="search" class="search">
+    <input id="city" type="text" placeholder="도시 이름 (예: 서울, Busan)" aria-label="도시 이름" autocomplete="off">
+    <button type="submit">확인</button>
+  </form>
+  <p id="hint" class="hint" role="status"></p>
+</main>
+
+<script>
+  // 인증키 불필요 (Open-Meteo)
+  const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
+  const WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
+  // "서울"처럼 짧은 한국어 이름은 지오코딩이 못 찾거나 엉뚱한 마을을 줘서, 행정구역 접미사도 같이 찾는다
+  const SUFFIXES = ["", "특별시", "광역시", "특별자치시", "특별자치도", "시"];
+  let current = { name: "서울", latitude: 37.566, longitude: 126.9784 };
+
+  // weather_code는 WMO 코드: 0~3 맑음/구름, 45~48 안개, 51 이상 비·눈 등
+  function judge(c) {
+    const t = c.temperature_2m, p = c.precipitation, w = c.wind_speed_10m, code = c.weather_code;
+    if (p >= 1 || code >= 61 || w >= 40 || t <= -5 || t >= 33) return { text: "쉬는 게 좋아요", cls: "rest" };
+    if (p > 0 || code >= 45 || w >= 25 || t < 3 || t > 28) return { text: "보통이에요", cls: "normal" };
+    return { text: "걷기 좋아요", cls: "good" };
+  }
+
+  function show(state) {
+    document.querySelectorAll(".card").forEach(el => el.classList.remove("active"));
+    document.getElementById(state).classList.add("active");
+  }
+
+  function render(c, u, place) {
+    const j = judge(c);
+    document.getElementById("place").textContent = place;
+    const v = document.getElementById("verdict");
+    v.textContent = j.text;
+    v.className = "verdict " + j.cls;
+    document.getElementById("temp").textContent = c.temperature_2m + u.temperature_2m;
+    document.getElementById("rain").textContent = c.precipitation + u.precipitation;
+    document.getElementById("wind").textContent = c.wind_speed_10m + u.wind_speed_10m;
+    show("result");
+  }
+
+  // 도시 이름 → 좌표. 후보 중 인구가 가장 많은 곳을 고르고, 못 찾으면 null
+  async function geocode(name) {
+    const lists = await Promise.all(SUFFIXES.map(async s => {
+      const url = GEO_URL + "?count=5&language=ko&name=" + encodeURIComponent(name + s);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return (await res.json()).results || [];
+    }));
+    const all = lists.flat();
+    if (!all.length) return null;
+    return all.reduce((a, b) => ((b.population || 0) > (a.population || 0) ? b : a));
+  }
+
+  async function load() {
+    show("loading");
+    try {
+      const url = WEATHER_URL + "?latitude=" + current.latitude + "&longitude=" + current.longitude
+        + "&current=temperature_2m,precipitation,wind_speed_10m,weather_code&timezone=auto";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      render(data.current, data.current_units, current.name);
+    } catch (e) {
+      console.error(e);
+      show("error");
+    }
+  }
+
+  document.getElementById("search").addEventListener("submit", async e => {
+    e.preventDefault();
+    const hint = document.getElementById("hint");
+    const name = document.getElementById("city").value.trim();
+    if (!name) return;
+    hint.textContent = "";
+    try {
+      const found = await geocode(name);
+      if (!found) { hint.textContent = "도시를 찾지 못했어요."; return; }
+      current = { name: found.name, latitude: found.latitude, longitude: found.longitude };
+      await load();
+    } catch (err) {
+      console.error(err);
+      hint.textContent = "도시를 찾지 못했어요.";
+    }
+  });
+
+  document.getElementById("retry").addEventListener("click", load);
+
+  load();
+</script>
+</body>
+</html>
