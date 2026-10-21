@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>하루 5분 UX/UI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  :root { --ink:#000; --sub:#555; --line:#e6e6e6; --gray:#f2f2f2;
+    --sans:"Pretendard",-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f1eee6; transition:background .6s; color:var(--ink);
+    font-family:var(--sans); line-height:1.7; }
+  .progress { position:fixed; top:0; left:0; right:0; height:2px; background:transparent; z-index:5; }
+  .progress i { display:block; height:100%; width:0; background:#000; transition:width .4s; }
+  .site-header { max-width:960px; margin:0 auto; padding:18px 20px; display:flex;
+    justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--line); }
+  .site-header { flex-wrap:wrap; gap:8px 24px; }
+  .logo { background:none; color:#000; padding:0; border-radius:0; font-family:var(--sans); font-size:17px; font-weight:700; letter-spacing:.02em; }
+  .tabs { display:flex; gap:22px; }
+  .tabs button { background:none; color:var(--sub); padding:4px 0; border-radius:0; font-size:14px; border-bottom:2px solid transparent; }
+  .tabs button[aria-current="true"] { color:#000; border-bottom-color:#000; }
+  body[data-view="panel"] #book-wrap, body[data-view="panel"] #ribbon { display:none; }
+  #panel-wrap[hidden] { display:none; }
+  .book.panel { display:block; padding:32px 34px; min-height:420px; }
+  .panel h2 { margin:0 0 4px; font-size:26px; font-weight:800; }
+  .panel .sub { margin:0 0 18px; font-size:13px; color:var(--sub); }
+  .panel ol { list-style:none; margin:0; padding:0; }
+  .panel .item { display:flex; flex-wrap:wrap; gap:2px 14px; align-items:baseline; width:100%; text-align:left; background:none; color:#000;
+    padding:10px 4px; border-radius:0; border-bottom:1px solid #e6dfcf; font-size:15px; }
+  .panel button.item:hover { background:#0000000a; }
+  .panel .n { min-width:44px; font-size:11px; letter-spacing:.08em; color:#8a8577; }
+  .panel .tag { margin-left:auto; font-size:11px; color:#c0392b; }
+  .panel .note { flex-basis:100%; padding-left:58px; font-size:12.5px; color:var(--sub); white-space:pre-wrap; }
+  .panel textarea { width:100%; min-height:110px; resize:vertical; border:1px solid #ccc; border-radius:12px; padding:12px;
+    font:inherit; font-size:14.5px; line-height:1.6; background:#fff; }
+  .panel textarea:focus-visible { outline:2px solid #000; }
+  .panel .add { margin:10px 0 22px; }
+  .panel .idea { display:flex; align-items:center; border-bottom:1px solid #e6dfcf; }
+  .panel .idea .item { flex:1; min-width:0; border-bottom:0; }
+  .panel .del { background:none; color:#8a8577; padding:4px 8px; border-radius:0; font-size:11px; }
+  .panel .del:hover { color:#000; text-decoration:underline; }
+  .panel .empty { font-size:14px; color:var(--sub); }
+  .pos, .meta, .ask b { font-size:11px; letter-spacing:.08em; color:var(--sub); }
+  main { max-width:960px; margin:0 auto; padding:44px 20px 24px; }
+  /* 책 표지(가죽 느낌) + 속지 */
+  .book-wrap { position:relative; padding:10px 12px 18px; border-radius:8px;
+    background:var(--cover,#4a3b30); box-shadow:0 18px 40px #0003, inset 0 0 0 1px #ffffff1a; }
+  .book { position:relative; display:grid; grid-template-columns:1fr 1fr; min-height:420px; background:#fdfaf2;
+    border-radius:3px; overflow:hidden; perspective:2400px;
+    box-shadow:0 2px 0 #e6dfcf,0 4px 0 #fdfaf2,0 6px 0 #ddd5c2,0 8px 0 #fdfaf2,0 10px 0 #d3cab5; animation:rise .5s ease both; }
+  .page { position:relative; padding:36px 34px 28px; display:flex; flex-direction:column; min-width:0; background-color:#fdfaf2; }
+  .page.left { justify-content:flex-start;
+    background-image:linear-gradient(to right,#0000 90%,#00000014 97%,#0000002e); }
+  .page.right { background-image:linear-gradient(to left,#0000 90%,#00000014 97%,#0000002e); }
+  .page.right .nav { margin-top:auto; padding-top:8px; }
+  .pageno { font-size:11px; color:#8a8577; letter-spacing:.1em; margin-top:auto; padding-top:14px; }
+  .page.right .pageno { text-align:right; margin-top:14px; }
+  /* 책갈피: 책 위로 튀어나오게 */
+  .ribbon { position:absolute; top:-30px; right:56px; width:30px; height:56px; padding:0; margin:0; border-radius:0; z-index:6;
+    background:#c9c3b3; clip-path:polygon(0 0,100% 0,100% 100%,50% 80%,0 100%); transition:background .2s, height .2s; }
+  .ribbon:hover { height:62px; background:#a8a190; }
+  .ribbon[aria-pressed="true"] { background:#c0392b; }
+  .ribbon[hidden] { display:none; }
+  /* 페이지 넘김 */
+  .leaf, .under { position:absolute; top:0; bottom:0; width:50%; pointer-events:none; }
+  .under { z-index:2; }
+  .under.l { left:0; } .under.r { right:0; }
+  .leaf { z-index:4; transform-style:preserve-3d; }
+  .leaf.next { left:50%; transform-origin:left center; animation:turnNext .85s cubic-bezier(.45,.05,.25,1) forwards; }
+  .leaf.prev { left:0; transform-origin:right center; animation:turnPrev .85s cubic-bezier(.45,.05,.25,1) forwards; }
+  .leaf .face { position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; overflow:hidden; }
+  .leaf .face.back { transform:rotateY(180deg); }
+  .leaf .face > .page { height:100%; }
+  .leaf .face::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:0; animation:shade .85s ease-in-out;
+    background:linear-gradient(to right,#0000,#00000055); }
+  @keyframes turnNext { from { transform:rotateY(0); } to { transform:rotateY(-180deg); } }
+  @keyframes turnPrev { from { transform:rotateY(0); } to { transform:rotateY(180deg); } }
+  @keyframes shade { 0%,100% { opacity:0; } 50% { opacity:.55; } }
+  @media (max-width:700px) {
+    main { padding-top:36px; }
+    .book { grid-template-columns:1fr; min-height:0; }
+    .page { padding:24px 20px; }
+    .page.left { background-image:none; border-bottom:1px solid #e6dfcf; }
+    .page.right { background-image:none; }
+    .ribbon { right:28px; }
+  }
+  @keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  @media (prefers-reduced-motion:reduce) { .book { animation:none; } .progress i { transition:none; } }
+  .meta { margin:0 0 14px; }
+  h1 { font-family:var(--sans); font-size:clamp(28px,4vw,42px); font-weight:800; line-height:1.25;
+    margin:0 0 18px; letter-spacing:-0.02em; word-break:keep-all; }
+  .def { font-family:var(--sans); font-size:15px; font-weight:600; margin:0 0 16px; word-break:keep-all; }
+  .body { font-size:13.5px; color:var(--sub); margin:0 0 20px; }
+  .ask { border-top:1px solid #e6dfcf; padding-top:14px; margin:0 0 20px; }
+  .ask b { display:block; margin-bottom:6px; font-weight:400; }
+  .ask p { margin:0; font-family:var(--sans); font-size:14.5px; }
+  .ask small { display:block; margin-top:4px; font-size:11px; color:var(--sub); }
+  .nav { display:flex; gap:10px; }
+  button { background:#000; color:#fff; border:0; border-radius:12px; padding:12px 18px;
+    font-size:14px; cursor:pointer; font-family:inherit; }
+  button:focus-visible { outline:3px solid #888; outline-offset:2px; }
+  .nav button { flex:1; }
+  .notice { font-size:13px; color:var(--sub); margin:0 0 14px; }
+  .sk { background:var(--gray); border-radius:12px; }
+  .sk.t { height:48px; width:80%; margin:0 0 16px; }
+  .sk.l { height:18px; margin:0 0 10px; }
+  .loading-msg { font-size:14px; color:var(--sub); margin-top:18px; }
+  dialog { border:0; border-radius:12px; padding:24px; width:min(480px,calc(100vw - 32px)); font-family:var(--sans); color:#000;
+    box-shadow:0 12px 40px #0004; }
+  dialog::backdrop { background:#0006; }
+  dialog h2 { margin:0 0 4px; font-size:22px; }
+  dialog .hint { margin:0 0 12px; font-size:13px; color:var(--sub); }
+  dialog textarea { width:100%; min-height:150px; resize:vertical; border:1px solid #ccc; border-radius:12px; padding:12px;
+    font:inherit; font-size:15px; line-height:1.6; }
+  dialog textarea:focus-visible { outline:2px solid #000; }
+  dialog .row { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  dialog .row .grow { flex:1; }
+  .err h1 { font-size:26px; }
+  footer { max-width:960px; margin:0 auto; padding:18px 20px 32px; border-top:1px solid var(--line);
+    font-size:12px; color:var(--sub); }
+  footer a { color:var(--sub); }
+  footer p { margin:0 0 4px; }
+</style>
+</head>
+<body>
+<dialog id="notes" aria-labelledby="notes-title">
+  <h2 id="notes-title"></h2>
+  <p class="hint">이 용어를 내 작업에 어떻게 적용할지 자유롭게 기록해 보세요. 이 브라우저에만 저장돼요.</p>
+  <textarea id="notes-text" aria-label="용어 기록"></textarea>
+  <div class="row">
+    <button id="notes-save" class="grow">저장하고 책갈피 꽂기</button>
+    <button id="notes-del">책갈피 지우기</button>
+    <button id="notes-close">닫기</button>
+  </div>
+</dialog>
+<div class="progress" aria-hidden="true"><i id="bar"></i></div>
+<header class="site-header">
+  <button class="logo" id="home">하루 5분 UX/UI</button>
+  <nav class="tabs" aria-label="메뉴">
+    <button data-view="glossary">용어집</button>
+    <button data-view="bookmarks">북마크</button>
+    <button data-view="archive">아카이브</button>
+  </nav>
+</header>
+<main><div class="book-wrap" id="book-wrap">
+  <button class="ribbon" id="ribbon" hidden title="책갈피 · 기록하기"></button>
+  <div id="app" class="book" aria-live="polite"></div>
+</div>
+<div class="book-wrap" id="panel-wrap" hidden><div class="book panel" id="panel"></div></div></main>
+<footer id="source"></footer>
+
+<script>
+// 용어 목록: 1단계에서 실제 호출로 type=standard, 요약이 있는 것만 사용.
+// ask는 서비스 제작자가 쓴 질문(위키백과 내용 아님).
+const TERMS = [
+  { title:"사용자 경험", ask:"지금 만드는 화면에서 사용자가 처음 느낄 감정은 무엇인가요? 그 감정을 만드는 한 장면을 떠올려 보세요." },
+  { title:"사용자 인터페이스", ask:"이번 화면에서 사용자가 직접 누르고 읽는 요소 중 가장 헷갈릴 만한 것 하나는 무엇인가요?" },
+  { title:"사용성", ask:"친구에게 설명 없이 이 화면을 건네면, 첫 과제를 몇 초 안에 끝낼 수 있을까요?" },
+  { title:"웹 접근성", ask:"마우스 없이 키보드만으로 지금 작업 중인 화면의 핵심 기능을 끝까지 쓸 수 있나요?" },
+  { title:"프로토타입", ask:"내 아이디어를 하루 안에 검증할 가장 거친 버전을 만든다면, 무엇만 남기겠어요?" },
+  { title:"사용자 중심 설계", ask:"이번 기능을 쓸 실제 사람 한 명에게 마지막으로 물어본 게 언제였나요?" },
+  { title:"피츠의 법칙", ask:"화면에서 가장 자주 누르는 버튼은 엄지가 닿기 쉽고, 충분히 크게 보이나요?" },
+  { title:"힉의 법칙", ask:"한 화면의 선택지가 5개를 넘는다면, 무엇을 숨기거나 묶을 수 있을까요?" },
+  { title:"게슈탈트 심리학", ask:"관련 있는 요소끼리 가까이 모여 있나요? 눈을 가늘게 뜨고 보면 그룹이 구분되는지 확인해 보세요." },
+  { title:"A/B 테스트", ask:"버튼 문구 하나를 두 가지로 바꾼다면, 어떤 지표로 승자를 정하겠어요?" },
+  { title:"반응형 웹 디자인", ask:"지금 작업 화면을 폭 360px로 줄이면 가장 먼저 깨지는 곳은 어디인가요?" },
+  { title:"타이포그래피", ask:"화면의 글자 크기는 몇 단계인가요? 가장 중요한 한 줄이 제일 크게 보이나요?" },
+  { title:"인지 부하", ask:"사용자가 한 번에 기억해야 하는 정보를 하나 줄인다면, 무엇을 줄이겠어요?" },
+  { title:"어포던스", ask:"이 화면에서 '눌러도 되는 것'처럼 보이는 요소와 실제로 눌리는 요소가 서로 일치하나요?" },
+  { title:"인터랙션 디자인", ask:"사용자가 버튼을 누른 직후 화면이 보여 주는 반응은 무엇인가요? 반응이 없는 순간은 없나요?" }
+];
+// 용어마다 다른 배경색: 색상(hue)만 바꾸고 밝기는 고정해서 검정 글씨와 대비를 유지
+const hue = i => (i * 47 + 8) % 360;
+const API = "https://ko.wikipedia.org/api/rest_v1/page/summary/";
+const app = document.getElementById("app");
+const sourceEl = document.getElementById("source");
+
+// 오늘 날짜(로컬) 기준 인덱스: 같은 날은 같은 용어
+const now = new Date();
+const dayNum = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+const todayIdx = dayNum % TERMS.length;
+const dateText = now.toLocaleDateString("ko-KR", { year:"numeric", month:"long", day:"numeric", weekday:"long" });
+
+// 책갈피·메모: 이 브라우저(localStorage)에만 저장. 막혀 있으면 이번 방문 동안만 유지.
+const NOTES_KEY = "uxui-notes";
+let notes = {};
+try { notes = JSON.parse(localStorage.getItem(NOTES_KEY) || "{}") || {}; } catch (e) { notes = {}; }
+const persist = () => { try { localStorage.setItem(NOTES_KEY, JSON.stringify(notes)); } catch (e) {} };
+const isMarked = i => Object.prototype.hasOwnProperty.call(notes, TERMS[i].title);
+
+// 아카이브 = 내 아이디어 메모장 (이 브라우저에만 저장)
+const IDEAS_KEY = "uxui-ideas";
+let ideas = [];
+try { ideas = JSON.parse(localStorage.getItem(IDEAS_KEY) || "[]"); if (!Array.isArray(ideas)) ideas = []; } catch (e) { ideas = []; }
+const persistIdeas = () => { try { localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas)); } catch (e) {} };
+
+let idx = todayIdx;   // 지금 보는 용어
+let reqId = 0;        // 늦게 도착한 응답 무시용
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const mod = i => (i + TERMS.length) % TERMS.length;
+const wikiUrl = t => "https://ko.wikipedia.org/wiki/" + encodeURIComponent(t.replace(/ /g, "_"));
+
+// 출처: 로컬 제목으로 만들기 때문에 로딩·실패 화면에서도 항상 보임
+function renderSource(title) {
+  const u = wikiUrl(title);
+  sourceEl.innerHTML =
+    `<p>출처: <a href="${u}" target="_blank" rel="noopener">위키백과 「${esc(title)}」</a> · ` +
+    `<a href="${u}?action=history" target="_blank" rel="noopener">편집 이력</a></p>` +
+    `<p>본문은 <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.ko" target="_blank" rel="noopener">CC BY-SA 4.0</a> 라이선스를 따릅니다.</p>`;
+}
+
+const header = label => `<p class="meta">${esc(dateText)} · ${esc(label)}</p>`;
+const label = () => idx === todayIdx ? "오늘의 용어" : "다른 용어";
+
+function updateChrome() {
+  document.body.style.background = `hsl(${hue(idx)} 62% 88%)`;
+  document.documentElement.style.setProperty("--cover", `hsl(${hue(idx)} 28% 30%)`);
+  document.getElementById("bar").style.width = ((idx + 1) / TERMS.length * 100) + "%";
+}
+
+// 헤더 탭: 책(오늘의 용어) / 용어집 / 북마크 / 아카이브
+let view = "book";
+const panel = document.getElementById("panel");
+const rowHtml = (i, right, note) =>
+  `<li><button class="item" data-i="${i}"><span class="n">${String(i + 1).padStart(2, "0")}</span><span>${esc(TERMS[i].title)}</span>${right}${note ? `<span class="note">${esc(note)}</span>` : ""}</button></li>`;
+function renderPanel() {
+  const tag = i => isMarked(i) ? `<span class="tag">책갈피</span>` : "";
+  let html;
+  if (view === "glossary") {
+    html = `<h2>용어집</h2><p class="sub">UX/UI 용어 ${TERMS.length}개예요. 누르면 책으로 열려요.</p><ol>` +
+      TERMS.map((t, i) => rowHtml(i, tag(i))).join("") + `</ol>`;
+  } else if (view === "bookmarks") {
+    const marked = TERMS.map((t, i) => i).filter(isMarked);
+    html = `<h2>북마크</h2><p class="sub">책갈피를 꽂은 용어와 내가 남긴 기록이에요.</p>` +
+      (marked.length ? `<ol>${marked.map(i => rowHtml(i, "", notes[TERMS[i].title].trim())).join("")}</ol>`
+        : `<p class="empty">아직 책갈피가 없어요. 책 오른쪽 위의 책갈피를 눌러 기록해 보세요.</p>`);
+  } else {
+    html = `<h2>아카이브</h2><p class="sub">나만의 아이디어 메모장이에요. 떠오른 생각을 적어 두세요.</p>
+      <textarea id="idea-text" aria-label="아이디어 메모" placeholder="오늘 떠오른 아이디어를 적어 보세요"></textarea>
+      <div class="add"><button data-act="add">메모 저장</button></div>` +
+      (ideas.length
+        ? `<ol>${ideas.map((m, k) => {
+            const [first, ...restLines] = m.text.split("\n");
+            const when = new Date(m.at).toLocaleString("ko-KR", { month:"long", day:"numeric", hour:"2-digit", minute:"2-digit" });
+            const rest = restLines.join("\n").trim();
+            return `<li class="idea"><div class="item"><span class="n">${String(k + 1).padStart(2, "0")}</span><span>${esc(first)}</span>` +
+              `<span class="tag" style="color:#8a8577">${esc(when)}</span>${rest ? `<span class="note">${esc(rest)}</span>` : ""}</div>` +
+              `<button class="del" data-act="del" data-id="${esc(m.id)}" aria-label="메모 삭제">삭제</button></li>`;
+          }).join("")}</ol>`
+        : `<p class="empty">아직 저장한 메모가 없어요.</p>`);
+  }
+  panel.innerHTML = html;
+}
+function setView(v) {
+  view = v;
+  const isPanel = v !== "book";
+  document.body.dataset.view = isPanel ? "panel" : "book";
+  document.getElementById("panel-wrap").hidden = !isPanel;
+  document.querySelectorAll(".tabs button").forEach(b =>
+    b.setAttribute("aria-current", String(b.dataset.view === v)));
+  if (isPanel) renderPanel();
+}
+document.getElementById("home").onclick = () => setView("book");
+document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setView(b.dataset.view); };
+panel.onclick = e => {
+  const act = e.target.closest("button[data-act]");
+  if (act) {
+    if (act.dataset.act === "add") {
+      const v = document.getElementById("idea-text").value.trim(); if (!v) return;
+      ideas.unshift({ id: String(Date.now()), text: v, at: new Date().toISOString() });
+    } else {
+      ideas = ideas.filter(m => m.id !== act.dataset.id);
+    }
+    persistIdeas(); renderPanel(); return;
+  }
+  const b = e.target.closest("button[data-i]"); if (!b) return;
+  const i = +b.dataset.i, showing = !ribbon.hidden && i === idx;
+  setView("book");
+  if (!showing) { idx = i; load(1, null); }
+};
+
+const ribbon = document.getElementById("ribbon");
+ribbon.onclick = () => openNotes(idx);
+
+function showLoading() {
+  ribbon.hidden = true;
+  updateChrome();
+  renderSource(TERMS[idx].title);
+  app.innerHTML =
+    `<section class="page left">${header(label())}<div class="sk t" role="status"></div></section>
+     <section class="page right"><div class="sk l"></div><div class="sk l" style="width:85%"></div><div class="sk l" style="width:60%"></div>
+     <p class="loading-msg">오늘의 용어를 불러오는 중이에요</p></section>`;
+}
+
+function showError() {
+  ribbon.hidden = true;
+  updateChrome();
+  renderSource(TERMS[idx].title);
+  app.innerHTML =
+    `<section class="page left err">${header(label())}<h1>불러오기 실패</h1></section>
+     <section class="page right"><p class="body">위키백과에 연결하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.</p>
+     <div class="nav"><button id="retry">다시 시도</button></div></section>`;
+  document.getElementById("retry").onclick = () => load(1, null);
+}
+
+function showTerm(data, notice) {
+  const t = TERMS[idx];
+  renderSource(t.title);
+  // [*] 같은 표기 제거, 첫 문장은 한 줄 정의, 나머지는 본문
+  const text = data.extract.replace(/\[\*\]/g, "").replace(/\s+/g, " ").trim();
+  const m = text.match(/^(.+?다\.)\s+(.*)$/);
+  const def = m ? m[1] : text;
+  const rest = m ? m[2] : "";
+  app.innerHTML =
+    `<section class="page left">${header(label())}<h1>${esc(t.title)}</h1><p class="def">${esc(def)}</p><span class="pageno">${idx * 2 + 1}</span></section>
+     <section class="page right">
+     ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
+     ${rest ? `<p class="body">${esc(rest)}</p>` : ""}
+     <div class="ask"><b>내 작업에 적용해 보기</b><p>${esc(t.ask)}</p>
+       <small>이 질문은 서비스 제작자가 쓴 것이며 위키백과 내용이 아닙니다.</small></div>
+     <div class="nav"><button id="prev">← 이전 용어</button><button id="next">다음 용어 →</button></div><span class="pageno">${idx * 2 + 2}</span></section>`;
+  ribbon.hidden = false;
+  ribbon.setAttribute("aria-pressed", isMarked(idx));
+  ribbon.setAttribute("aria-label", `${t.title} 책갈피와 기록`);
+  document.getElementById("prev").onclick = () => { if (flipping) return; idx = mod(idx - 1); load(-1, "prev"); };
+  document.getElementById("next").onclick = () => { if (flipping) return; idx = mod(idx + 1); load(1, "next"); };
+}
+
+// 페이지 넘김: 넘어가는 한 장(앞면=지금 페이지, 뒷면=새 페이지)을 3D로 돌린다.
+// 좁은 화면이거나 '동작 줄이기' 설정이면 넘김 없이 바로 바뀐다.
+let flipping = false;
+const canFlip = () => !matchMedia("(max-width:700px)").matches && !matchMedia("(prefers-reduced-motion:reduce)").matches;
+function snapshot() {
+  if (!canFlip()) return null;
+  const l = app.querySelector(":scope > .page.left"), r = app.querySelector(":scope > .page.right");
+  return l && r ? { l: l.cloneNode(true), r: r.cloneNode(true) } : null;
+}
+function inert(node) {
+  node.removeAttribute("id"); node.querySelectorAll("[id]").forEach(n => n.removeAttribute("id"));
+  node.querySelectorAll("button").forEach(b => b.tabIndex = -1);
+  return node;
+}
+function playFlip(kind, snap) {
+  const newL = app.querySelector(":scope > .page.left"), newR = app.querySelector(":scope > .page.right");
+  if (!snap || !newL || !newR) return;
+  const el = (cls, child) => { const d = document.createElement("div"); d.className = cls; if (child) d.append(inert(child)); return d; };
+  const next = kind === "next";
+  const leaf = el("leaf " + kind), under = el("under " + (next ? "l" : "r"), next ? snap.l : snap.r);
+  leaf.append(el("face front", next ? snap.r : snap.l), el("face back", (next ? newL : newR).cloneNode(true)));
+  for (const n of [leaf, under]) { n.setAttribute("aria-hidden", "true"); app.append(n); }
+  flipping = true;
+  setTimeout(() => under.remove(), 400);                 // 넘어가는 장이 세로로 섰을 때 옛 페이지를 걷어낸다
+  setTimeout(() => { leaf.remove(); under.remove(); flipping = false; }, 880);
+}
+
+// dir: 요약이 비었거나 여러 뜻 문서면 이 방향으로 자동 넘김
+// flip: "next" | "prev" | null (페이지 넘김 방향). 넘김일 땐 데이터가 늦을 때만 로딩 화면을 보여준다.
+async function load(dir, flip = null) {
+  const my = ++reqId;
+  let notice = "";
+  const snap = flip ? snapshot() : null;
+  const timer = snap ? setTimeout(() => { if (my === reqId) showLoading(); }, 500) : null;
+  for (let tries = 0; tries < TERMS.length; tries++) {
+    if (!snap) showLoading();
+    let data;
+    try {
+      const res = await fetch(API + encodeURIComponent(TERMS[idx].title.replace(/ /g, "_")));
+      if (my !== reqId) return;
+      if (res.status === 404) data = null;                 // 문서 없음 → 건너뜀
+      else if (!res.ok) throw new Error("HTTP " + res.status);
+      else data = await res.json();
+    } catch (e) {
+      if (my !== reqId) return;
+      clearTimeout(timer);
+      return showError();                                  // 연결 오류
+    }
+    if (data && data.type === "standard" && data.extract && data.extract.trim()) {
+      clearTimeout(timer);
+      showTerm(data, notice);
+      return snap && playFlip(flip, snap);
+    }
+    notice = `「${TERMS[idx].title}」 문서는 요약이 없거나 여러 뜻이라 다음 용어로 넘어왔어요.`;
+    idx = mod(idx + dir);
+  }
+  clearTimeout(timer);
+  showError();
+}
+
+const dlg = document.getElementById("notes"), txt = document.getElementById("notes-text");
+let noteIdx = 0;
+function openNotes(i) {
+  noteIdx = i;
+  document.getElementById("notes-title").textContent = TERMS[i].title;
+  txt.value = isMarked(i) ? notes[TERMS[i].title] : "";
+  document.getElementById("notes-del").hidden = !isMarked(i);
+  dlg.showModal(); txt.focus();
+}
+function refreshMarks() {
+  updateChrome();
+  ribbon.setAttribute("aria-pressed", isMarked(idx));
+  if (view !== "book") renderPanel();
+}
+document.getElementById("notes-save").onclick = () => { notes[TERMS[noteIdx].title] = txt.value; persist(); dlg.close(); refreshMarks(); };
+document.getElementById("notes-del").onclick = () => { delete notes[TERMS[noteIdx].title]; persist(); dlg.close(); refreshMarks(); };
+document.getElementById("notes-close").onclick = () => dlg.close();
+dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+
+load(1);
+</script>
+</body>
+</html>
